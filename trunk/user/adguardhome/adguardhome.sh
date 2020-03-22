@@ -79,7 +79,13 @@ dns:
   ratelimit_whitelist: []
   refuse_any: true
   bootstrap_dns:
+  - 223.5.5.5
+  - 223.6.6.6
+  - 114.114.114.114
   - 1.1.1.1
+  - 8.8.4.4
+  - 8.8.8.8
+  - 169.239.202.202
   all_servers: true
   allowed_clients: []
   disallowed_clients: []
@@ -90,7 +96,13 @@ dns:
   safebrowsing_enabled: false
   resolveraddress: ""
   upstream_dns:
+  - 223.5.5.5
+  - 223.6.6.6
+  - 114.114.114.114
   - 1.1.1.1
+  - 8.8.4.4
+  - 8.8.8.8
+  - 169.239.202.202
 tls:
   enabled: false
   server_name: ""
@@ -138,20 +150,32 @@ fi
 
 dl_adg(){
 logger -t "AdGuardHome" "下载AdGuardHome"
-#wget --no-check-certificate -O /tmp/AdGuardHome.tar.gz https://github.com/AdguardTeam/AdGuardHome/releases/download/v0.101.0/AdGuardHome_linux_mipsle.tar.gz
-curl -k -s -o /tmp/AdGuardHome/AdGuardHome --connect-timeout 10 --retry 3 https://cdn.jsdelivr.net/gh/chongshengB/rt-n56u/trunk/user/adguardhome/AdGuardHome
-if [ ! -f "/tmp/AdGuardHome/AdGuardHome" ]; then
-logger -t "AdGuardHome" "AdGuardHome下载失败，请检查是否能正常访问github!程序将退出。"
+flag=1
+for i in $(seq 1 3)  
+do   
+wget --no-check-certificate -O /tmp/AdGuardHome.tar.gz https://static.adguard.com/adguardhome/release/AdGuardHome_linux_mipsle.tar.gz
+#curl -k -s -o /tmp/AdGuardHome/AdGuardHome --connect-timeout 10 --retry 3 https://cdn.jsdelivr.net/gh/chongshengB/rt-n56u/trunk/user/adguardhome/AdGuardHome
+flag=$?
+if [ $flag != "0" ] && [ ! -f "/tmp/AdGuardHome.tar.gz" ]; then
+logger -t "AdGuardHome" "AdGuardHome下载失败，请检查是否能正常访问网络!程序将再次尝试下载..."
+else
+break
+fi
+done 
+
+if [ $flag != "0" ] && [ ! -f "/tmp/AdGuardHome.tar.gz" ]; then
+logger -t "AdGuardHome" "AdGuardHome下载失败，请检查是否能正常访问网络!程序将退出。"
 nvram set adg_enable=0
 exit 0
 else
 logger -t "AdGuardHome" "AdGuardHome下载成功。"
+tar -xzf /tmp/AdGuardHome.tar.gz -C /tmp
+rm -f /tmp/AdGuardHome.tar.gz /tmp/AdGuardHome/LICENSE.txt /tmp/AdGuardHome/README.md
 chmod 777 /tmp/AdGuardHome/AdGuardHome
 fi
 }
 
 start_adg(){
-    mkdir -p /tmp/AdGuardHome
 	mkdir -p /etc/storage/AdGuardHome
 	if [ ! -f "/tmp/AdGuardHome/AdGuardHome" ]; then
 	dl_adg
@@ -160,16 +184,45 @@ start_adg(){
 	change_dns
 	set_iptable
 	logger -t "AdGuardHome" "运行AdGuardHome"
-	eval "/tmp/AdGuardHome/AdGuardHome -c $adg_file -w /tmp/AdGuardHome -v" &
-
+	eval "/tmp/AdGuardHome/AdGuardHome -c $adg_file -w /etc/storage/AdGuardHome" &
+        sleep 3
+	if [ ! -z "$(ps -w | grep "AdGuardHome" | grep -v grep )" ]; then
+	   logger -t "AdGuardHome" "启动成功"
+	   /usr/bin/adguardhome.sh keep &
+	else
+	   logger -t "AdGuardHome" "启动失败, 注意检AdGuardHome是否下载完整,6秒后尝试重新启动..."
+	   sleep 6
+	   logger -t "AdGuardHome" "正在清理AdGuardHome目录..."
+	   killall -9 AdGuardHome
+	   del_dns
+           clear_iptable
+	   rm -fr /tmp/AdGuardHome/
+	   start_adg
+	fi
 }
+
 stop_adg(){
-rm -rf /tmp/AdGuardHome
+rm -f /tmp/AdGuardHome.tar.gz
 killall -9 AdGuardHome
 del_dns
 clear_iptable
+killall -9 adguardhome.sh
 }
 
+keep_adg(){
+while true;do
+  if [ $(nvram get adg_enable) = 1 ];then
+  wget -O /dev/null 127.0.0.1:3030
+  if [ "$?" != "0" ];then
+    logger -t "AdGuardHome" "正在重启AdGuardHome..."
+    start_adg
+  fi
+ else
+  break
+ fi
+ sleep 60
+done
+}
 
 case $1 in
 start)
@@ -177,6 +230,9 @@ start)
 	;;
 stop)
 	stop_adg
+	;;
+keep)
+	keep_adg
 	;;
 *)
 	echo "check"
