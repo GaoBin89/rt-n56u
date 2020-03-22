@@ -28,3 +28,4 @@ endif
 	tar -xzf ./terminfo.tar.gz -C $(INSTALLDIR)/usr/share
 	$(ROMFSINST) /sbin/check_crontab.sh
 	$(ROMFSINST) $(THISDIR)/certs.tgz /etc_ro/certs.tgz
+	$(ROMFSINST) $(THISDIR)/admin /etc_ro/admin
